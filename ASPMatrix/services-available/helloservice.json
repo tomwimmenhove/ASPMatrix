@@ -1,0 +1,5 @@
+{
+  "Name": "helloservice",
+  "ServicePath": "/home/tom/git/ASPMatrix/helloservice/bin/Debug/net7.0/",
+  "UrlPath": "/helloservice"
+}

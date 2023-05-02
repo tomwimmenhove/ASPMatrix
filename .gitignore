@@ -1,0 +1,6 @@
+**/bin
+**/obj
+**/server-*
+**/*.swp
+ASPMatrix/appsettings.*.json
+
