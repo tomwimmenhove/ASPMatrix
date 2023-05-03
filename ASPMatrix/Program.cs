@@ -1,24 +1,23 @@
-﻿using ASPMatrix.WebServer;
-using ASPMatrix.Proxy;
+﻿using ASPMatrix.Proxy;
+using ASPMatrix.WebServer;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
-var proxyConfigurator = new Apache2ProxyConfigurator("/etc/apache2/asp.net-proxy/reverse.conf");
+var hostBuilder = Host.CreateDefaultBuilder(args)
+    .ConfigureServices((hostContext, services) =>
+    {
+        services.AddOptions<ASPMatrix.Proxy.ProxySettings>()
+            .BindConfiguration("Proxy")
+            .ValidateDataAnnotations();
+        services.AddOptions<ASPMatrix.WebServer.WebServerManagerSettings>()
+            .BindConfiguration("WebServerManager")
+            .ValidateDataAnnotations();
 
-string directoryPath = "services-enabled";
-var servers = new WebServers(proxyConfigurator, directoryPath);
+        services.AddSingleton<IProxyConfigurator, Apache2ProxyConfigurator>();
+        services.AddHostedService<WebServerManagerHostedService>();
+    });
 
-await servers.Start();
+using var host = hostBuilder.Build();
 
-var waitHandle = new ManualResetEvent(false);
-Console.CancelKeyPress += (sender, eventArgs) =>
-{
-    waitHandle.Set();
-    eventArgs.Cancel = true;
-};
+await host.RunAsync();
 
-new ManualResetEvent(false).WaitOne();
-
-Console.Error.WriteLine("Stopping services");
-
-await servers.Stop();
-
-Console.WriteLine("Exiting");

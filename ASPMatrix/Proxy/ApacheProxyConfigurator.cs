@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using System.Diagnostics;
 using System.Text;
 
@@ -5,16 +6,11 @@ namespace ASPMatrix.Proxy;
 
 public class Apache2ProxyConfigurator : IProxyConfigurator
 {
-    private readonly string _proxyConfigPath;
-    private readonly string _sudoPath;
-    private readonly string _systemCtlPath;
+    private readonly ProxySettings _settings;
     
-    public Apache2ProxyConfigurator(string proxyConfigPath,
-        string sudoPath = "/bin/sudo", string systemCtlPath = "/bin/systemctl")
+    public Apache2ProxyConfigurator(IOptions<ProxySettings> options)
     {
-        _proxyConfigPath = proxyConfigPath;
-        _sudoPath = sudoPath;
-        _systemCtlPath = systemCtlPath;
+        _settings = options.Value;
     }
 
     public async Task SetProxyRules(IEnumerable<ProxyRule> rules)
@@ -27,7 +23,7 @@ public class Apache2ProxyConfigurator : IProxyConfigurator
                       $"ProxyPassReverse \"{rule.Path}\" \"{rule.TargetUrl}\"\n\n");
         }
 
-        await File.WriteAllTextAsync(_proxyConfigPath, sb.ToString());
+        await File.WriteAllTextAsync(_settings.ProxyConfigFile, sb.ToString());
 
         await RestartApache2();
     }
@@ -38,9 +34,9 @@ public class Apache2ProxyConfigurator : IProxyConfigurator
     private async Task RestartApache2()
     {
         var process = new Process();
-        process.StartInfo.FileName = _sudoPath ?? _systemCtlPath;
-        process.StartInfo.Arguments = _sudoPath != null
-            ? $"{_systemCtlPath} reload apache2.service"
+        process.StartInfo.FileName = _settings.SudoPath ?? _settings.SystemCtlPath;
+        process.StartInfo.Arguments = _settings.SudoPath != null
+            ? $"{_settings.SystemCtlPath} reload apache2.service"
             : "reload apache2.service";
         process.StartInfo.UseShellExecute = false;
         process.Start();

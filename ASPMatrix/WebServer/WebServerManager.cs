@@ -1,14 +1,21 @@
+using Microsoft.Extensions.Options;
 using ASPMatrix.Proxy;
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace ASPMatrix.WebServer;
 
-public class WebServers
+public class WebServerManagerHostedService : IHostedService
 {
+    private const string ConfigDirectory = "services-enabled";
+
     private readonly IProxyConfigurator _proxyConfigurator;
     private readonly List<WebServerInstance> _webServerInstances = new();
     private readonly string _configDirectoryPath;
     private readonly FileSystemWatcher _fileSystemWatcher;
+    private readonly ILogger<WebServerManagerHostedService> _logger;
+    private readonly System.Timers.Timer _onChangeTimer = new(100);
 
     private struct WebServerInstance
     {
@@ -17,12 +24,17 @@ public class WebServers
         public int Port;
     }
 
-    public WebServers(IProxyConfigurator proxyConfigurator, string configDirectoryPath)
+    public WebServerManagerHostedService(ILogger<WebServerManagerHostedService> logger,
+        IProxyConfigurator proxyConfigurator, IOptions<WebServerManagerSettings> options)
     {
-        _proxyConfigurator = proxyConfigurator;
-        _configDirectoryPath = configDirectoryPath;
+        _logger = logger;
 
-        _fileSystemWatcher = new FileSystemWatcher(configDirectoryPath, "*.json");
+        _proxyConfigurator = proxyConfigurator;
+        _configDirectoryPath = Path.Combine(options.Value.ServiceConfigPath, ConfigDirectory);
+
+        _onChangeTimer.Elapsed += OnChangeTimerOnElapsed;
+
+        _fileSystemWatcher = new FileSystemWatcher(_configDirectoryPath, "*.json");
 
         _fileSystemWatcher.Created += OnConfigChanged;
         _fileSystemWatcher.Changed += OnConfigChanged;
@@ -32,25 +44,39 @@ public class WebServers
         _fileSystemWatcher.EnableRaisingEvents = true;
     }
 
-    public async Task Start()
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
-        var configurations = ReadConfigurations().ToArray();
-        await SetWebServers(configurations);
+        _logger.LogInformation("Starting server manager");
+
+        await Restart();
     }
 
-    public async Task Stop()
+    public async Task StopAsync(CancellationToken cancellationToken)
     {
+        _logger.LogInformation("Stopping server manager");
+
         foreach(var instance in _webServerInstances)
         {
             await instance.WebServer.Stop();
         }
     }
 
-    private async void OnConfigChanged(object source, FileSystemEventArgs e)
+    private async Task Restart()
     {
-        Console.WriteLine("Reloading configuration");
-        await Task.Delay(100);
-        await Start();
+        var configurations = ReadConfigurations().ToArray();
+        await SetWebServers(configurations);
+    }
+
+    private async void OnChangeTimerOnElapsed(object? source, EventArgs e)
+    {
+        _onChangeTimer.Stop();
+        _logger.LogInformation("Reloading configuration");
+        await Restart();
+    }
+
+    private void OnConfigChanged(object? source, FileSystemEventArgs e)
+    {
+        _onChangeTimer.Start();
     }
 
     private IEnumerable<WebServerConfig> ReadConfigurations()
@@ -64,13 +90,13 @@ public class WebServers
                 webServerConfig = JsonSerializer.Deserialize<WebServerConfig>(jsonData);
                 if (webServerConfig == null)
                 {
-                    Console.Error.WriteLine($"Failed to deserialize {filePath}");
+                    _logger.LogError($"Failed to deserialize {filePath}");
                     continue;
                 }
             }
             catch (Exception e)
             {
-                Console.Error.WriteLine($"Failed to deserialize {filePath}: {e.Message}");
+                _logger.LogError($"Failed to deserialize {filePath}: {e.Message}");
                 continue;
             }
 
@@ -84,7 +110,7 @@ public class WebServers
         var tasks = new List<Task>();
         foreach(var instance in stopInstances)
         {
-            Console.WriteLine($"Stopping {instance.WebServerConfig.Name} on {instance.WebServerConfig.UrlPath}");
+            _logger.LogInformation($"Stopping {instance.WebServerConfig.Name} on {instance.WebServerConfig.UrlPath}");
             var task = instance.WebServer.Stop();
             tasks.Add(task);
 
@@ -102,12 +128,12 @@ public class WebServers
             try
             {
                 instance = CreateWebServerInstance(config);
-                Console.WriteLine($"Starting {instance.WebServerConfig.Name} on {instance.WebServerConfig.UrlPath}");
+                _logger.LogInformation($"Starting {instance.WebServerConfig.Name} on {instance.WebServerConfig.UrlPath}");
                 await instance.WebServer.Start();
             }
             catch (Exception e)
             {
-                Console.Error.WriteLine($"Failed to start {config.Name}: {e.Message}");
+                _logger.LogError($"Failed to start {config.Name}: {e.Message}");
                 continue;
             }
 
