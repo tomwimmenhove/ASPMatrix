@@ -17,4 +17,18 @@ public class WebServerConfig
         ServicePath = servicePath;
         UrlPath = urlPath;
     }
+
+    public override bool Equals(object? obj)
+    {
+        if (obj == null || GetType() != obj.GetType())
+        {
+            return false;
+        }
+
+        var other = (WebServerConfig)obj;
+        return Name == other.Name && ServicePath == other.ServicePath && UrlPath == other.UrlPath;
+    }
+
+    public override int GetHashCode() =>
+        ((17 * 23 + ServicePath.GetHashCode()) * 23 + UrlPath.GetHashCode()) * 23 + Name.GetHashCode();
 }
