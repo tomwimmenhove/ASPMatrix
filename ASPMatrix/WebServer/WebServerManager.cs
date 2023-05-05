@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Options;
 using ASPMatrix.Proxy;
 using ASPMatrix.ConfigMonitoring;
 using Microsoft.Extensions.Hosting;
@@ -56,7 +55,7 @@ public class WebServerManager : IHostedService, IDisposable
 
     async Task ConfigFileMonitorOnConfigAdded(object sender, ConfigFileEventArgs<WebServerConfig> e)
     {
-        Console.WriteLine($"Config added  : {e.ConfigFile.Config.Name} ({e.ConfigFile.FilePath})");
+        _logger.LogInformation($"Config added  : {e.ConfigFile.Config.Name} ({e.ConfigFile.FilePath})");
 
         var instance = CreateWebServerInstance(e.ConfigFile);
         _webServerInstances.Add(instance);
@@ -67,7 +66,7 @@ public class WebServerManager : IHostedService, IDisposable
 
     async Task ConfigFileMonitorOnConfigRemoved(object sender, ConfigFileEventArgs<WebServerConfig> e)
     {
-        Console.WriteLine($"Config removed: {e.ConfigFile.Config.Name} ({e.ConfigFile.FilePath})");
+        _logger.LogInformation($"Config removed: {e.ConfigFile.Config.Name} ({e.ConfigFile.FilePath})");
 
         WebServerInstance? instance = _webServerInstances.FirstOrDefault(
             x => x.ConfigFile.FilePath == e.ConfigFile.FilePath);

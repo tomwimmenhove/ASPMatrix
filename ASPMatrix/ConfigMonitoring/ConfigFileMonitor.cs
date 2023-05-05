@@ -10,27 +10,26 @@ public class ConfigFileMonitor<T> : IDisposable//, IConfigFileMonitor<T>
     private const string FileFilter = "*.json";
 
     private bool disposed = false;
-    private string _directoryPath;
+    private readonly ConfigFileSettings _settings;
     private readonly FileSystemWatcher _fileSystemWatcher;
     private readonly List<ConfigFile<T>> _configFiles = new();
     private readonly Thread _runnerThread;
     private readonly ILogger<ConfigFileMonitor<T>> _logger;
+    private readonly BlockingCollection<FileSystemEventArgs> _fileEvents = new();
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     public delegate Task ConfigFileEventHandler(object sender, ConfigFileEventArgs<T> e);
     public event ConfigFileEventHandler? ConfigAdded;
     public event ConfigFileEventHandler? ConfigRemoved;
-
-    private BlockingCollection<FileSystemEventArgs> _fileEvents = new();
-    private CancellationTokenSource _cancellationTokenSource = new();
 
     public ConfigFileMonitor(ILogger<ConfigFileMonitor<T>> logger,
         IOptions<ConfigFileSettings> options)
     {
         _logger = logger;
 
-        _directoryPath = options.Value.ConfigPath;
+        _settings = options.Value;
 
-        _fileSystemWatcher = new FileSystemWatcher(_directoryPath, FileFilter);
+        _fileSystemWatcher = new FileSystemWatcher(_settings.ConfigEnabled, FileFilter);
 
         _fileSystemWatcher.Created += OnFileSystemEvent;
         _fileSystemWatcher.Changed += OnFileSystemEvent;
@@ -42,6 +41,19 @@ public class ConfigFileMonitor<T> : IDisposable//, IConfigFileMonitor<T>
 
     public void Start()
     {
+        var filePaths = GetConfigFiles(_settings.ConfigActive);
+        foreach(var filePath in filePaths)
+        {
+            try
+            {
+                File.Delete(filePath);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError($"Unable to delete file \"{filePath}\": {e.Message}");
+            }
+        }
+
         _fileSystemWatcher.EnableRaisingEvents = true;
 
         _runnerThread.Start();
@@ -49,8 +61,7 @@ public class ConfigFileMonitor<T> : IDisposable//, IConfigFileMonitor<T>
 
     private async Task Run()
     {
-        var filePaths = Directory.GetFiles(_directoryPath, FileFilter)
-            .Select(x => Path.GetFullPath(x));
+        var filePaths = GetConfigFiles(_settings.ConfigEnabled);
         foreach (var filePath in filePaths)
         {
             ConfigFile<T> configFile;
@@ -182,10 +193,20 @@ public class ConfigFileMonitor<T> : IDisposable//, IConfigFileMonitor<T>
         }
     }
 
-    private string GetFullPath(string filePath) => Path.GetFullPath(Path.Combine(_directoryPath, filePath));
+    private string GetFullPath(string filePath) =>
+        Path.GetFullPath(Path.Combine(_settings.ConfigEnabled, filePath));
 
     private async Task Added(ConfigFile<T> configFile)
     {
+        try
+        {
+            File.CreateSymbolicLink(GetActiveConfigPath(configFile.FilePath), configFile.FilePath);
+        }
+        catch(Exception e)
+        {
+            _logger.LogError($"Unable to create symbolic link \"{_settings.ConfigEnabled}\": {e.Message}");
+        }
+
         if (ConfigAdded != null)
         {
             await ConfigAdded(this, new ConfigFileEventArgs<T>(configFile));
@@ -194,6 +215,15 @@ public class ConfigFileMonitor<T> : IDisposable//, IConfigFileMonitor<T>
 
     private async Task Removed(ConfigFile<T> configFile)
     {
+        try
+        {
+            File.Delete(GetActiveConfigPath(configFile.FilePath));
+        }
+        catch(Exception e)
+        {
+            _logger.LogError($"Unable to remove symbolic link \"{_settings.ConfigEnabled}\": {e.Message}");
+        }
+
         if (ConfigRemoved != null)
         {
             await ConfigRemoved(this, new ConfigFileEventArgs<T>(configFile));
@@ -220,6 +250,13 @@ public class ConfigFileMonitor<T> : IDisposable//, IConfigFileMonitor<T>
             return default;
         }
     }
+
+    private string GetActiveConfigPath(string filePath) =>
+        Path.Combine(_settings.ConfigActive, Path.GetFileName(filePath));
+
+    private static IEnumerable<string> GetConfigFiles(string path) =>
+         Directory.GetFiles(path, FileFilter)
+            .Select(x => Path.GetFullPath(x));
 
     ~ConfigFileMonitor()
     {

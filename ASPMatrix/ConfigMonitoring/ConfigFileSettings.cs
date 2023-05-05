@@ -5,5 +5,8 @@ namespace ASPMatrix.ConfigMonitoring;
 public class ConfigFileSettings
 {
     [Required]
-    public string ConfigPath { get; set; } = default!;
+    public string ConfigEnabled { get; set; } = default!;
+
+    [Required]
+    public string ConfigActive { get; set; } = default!;
 }
