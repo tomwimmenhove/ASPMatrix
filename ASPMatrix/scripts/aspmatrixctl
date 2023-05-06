@@ -1,0 +1,99 @@
+#!/bin/bash
+
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 [command] [filename]."
+    echo "  Where [command] is either \"start\" or \"stop\" and [filename] is a file in the services-available directory"
+    exit 1
+fi
+
+if [ ! -f "$2" ]; then
+    echo "Error: File does not exist."
+    exit 1
+fi
+
+
+function wait_for() {
+    directory=$(dirname "$1")
+    while [ ! -f "$1" ]
+    do
+        inotifywait -q -e create -t 1 "$directory" > /dev/null
+    done
+}
+
+function start() {
+    file_name="$1"
+    directory=$(dirname "$file_name")
+    base_name=$(basename "$file_name")
+
+    available_name=$(realpath -s "$directory/../services-available/$base_name")
+    if [ ! -f "$available_name" ]; then
+        echo "File \"$available_name\" not found"
+        exit 1
+    fi
+
+    enabled_name=$(realpath -s "$directory/../services-enabled/$base_name")
+    if [ -f "$enabled_name" ]; then
+        echo "File \"$enabled_name\" exists: is the service already running?"
+        exit 1
+    fi
+
+    active_name=$(realpath -s "$directory/../services-active/$base_name")
+
+    wait_for "$active_name" &
+    pid=$!
+    trap 'kill $pid' EXIT
+    
+    echo -n "Starting service..."
+
+    ln -s "$(realpath -s $available_name)" "$enabled_name" || exit 1
+    
+    wait $pid
+    trap - EXIT
+    echo "OK"
+}
+
+function stop() {
+    file_name="$1"
+    directory=$(dirname "$file_name")
+    base_name=$(basename "$file_name")
+
+    enabled_name=$(realpath -s "$directory/../services-enabled/$base_name")
+    if [ ! -f "$enabled_name" ]; then
+        echo "File \"$enabled_name\" not found: Is the service enabled?"
+        exit 1
+    fi
+   
+    active_name=$(realpath -s "$directory/../services-active/$base_name")
+    if [ ! -f "$active_name" ]; then
+        echo "File \"$active_name\" not found: Is the service running?"
+        exit 1
+    fi
+    
+    inotifywait -q -P "$active_name" -e delete &
+    pid=$!
+    trap 'kill $pid' EXIT
+    
+    echo -n "Stopping service..."
+    rm "$enabled_name" || exit 1
+    
+    wait $pid
+    trap - EXIT
+    echo "OK"
+}
+
+case $1 in
+    "start")
+        start $2
+        ;;
+    "stop")
+        stop $2
+        ;;
+    "restart")
+        stop $2
+        start $2
+        ;;
+    *)
+        echo "Command not recognized. Available commands: start, stop, restart"
+        exit 1
+        ;;
+esac

@@ -3,4 +3,6 @@
 **/server-*
 **/*.swp
 ASPMatrix/appsettings.*.json
+ASPMatrix/services-enabled/**
+ASPMatrix/services-active/**
 
