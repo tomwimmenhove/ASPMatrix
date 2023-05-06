@@ -198,6 +198,11 @@ public class ConfigFileMonitor<T> : IDisposable//, IConfigFileMonitor<T>
 
     private async Task Added(ConfigFile<T> configFile)
     {
+        if (ConfigAdded != null)
+        {
+            await ConfigAdded(this, new ConfigFileEventArgs<T>(configFile));
+        }
+
         try
         {
             File.CreateSymbolicLink(GetActiveConfigPath(configFile.FilePath), configFile.FilePath);
@@ -206,15 +211,15 @@ public class ConfigFileMonitor<T> : IDisposable//, IConfigFileMonitor<T>
         {
             _logger.LogError($"Unable to create symbolic link \"{_settings.ConfigEnabled}\": {e.Message}");
         }
-
-        if (ConfigAdded != null)
-        {
-            await ConfigAdded(this, new ConfigFileEventArgs<T>(configFile));
-        }
     }
 
     private async Task Removed(ConfigFile<T> configFile)
     {
+        if (ConfigRemoved != null)
+        {
+            await ConfigRemoved(this, new ConfigFileEventArgs<T>(configFile));
+        }
+
         try
         {
             File.Delete(GetActiveConfigPath(configFile.FilePath));
@@ -224,10 +229,6 @@ public class ConfigFileMonitor<T> : IDisposable//, IConfigFileMonitor<T>
             _logger.LogError($"Unable to remove symbolic link \"{_settings.ConfigEnabled}\": {e.Message}");
         }
 
-        if (ConfigRemoved != null)
-        {
-            await ConfigRemoved(this, new ConfigFileEventArgs<T>(configFile));
-        }
     }
 
     private T? ReadConfigFile(string filePath)

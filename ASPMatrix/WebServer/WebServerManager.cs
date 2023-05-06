@@ -85,16 +85,9 @@ public class WebServerManager : IHostedService, IDisposable
         await _proxyConfigurator.SetProxyRules(rules);
     }
 
-    private int FindPort()
-    {
-        for (int i = 5000; ; i++)
-        {
-            if (_webServerInstances.All(x => x.Port != i))
-            {
-                return i;
-            }
-        }
-    }
+    private int FindPort() => Enumerable.Range(5000, Int16.MaxValue)
+        .Except(_webServerInstances.Select(x => x.Port))
+        .First();
 
     private WebServerInstance CreateWebServerInstance(ConfigFile<WebServerConfig> configFile)
     {
